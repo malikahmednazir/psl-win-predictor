@@ -1,0 +1,249 @@
+<div class="page">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">T20</span>
+      <span><strong>Dynamic Win Predictor</strong><small>IPL → PSL research dashboard</small></span>
+    </div>
+    <nav>
+      <a href="#data">Data</a>
+      <a href="#reproduction">Paper reproduction</a>
+      <a href="#models">4 models</a>
+      <a href="#novelty">Novelty</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">BALL-BY-BALL MATCH OUTCOME PREDICTION</p>
+      <h1>Can the chasing team win?<br><span>From the IPL to the Pakistan Super League</span></h1>
+      <p class="lead">
+        A reproduction of Goel et al. (2021), <em>Dynamic cricket match outcome prediction</em>
+        (Journal of Sports Analytics 7, 185–196), on its original IPL 2008–2019 dataset, applied to
+        the Pakistan Super League. We propose chase-state features and league-aware transfer
+        learning for data-scarce leagues.
+      </p>
+    </section>
+
+    @if (loading) { <div class="notice">Loading results…</div> }
+    @if (error) { <div class="notice err">{{ error }}</div> }
+
+    @if (!loading && !error) {
+      <!-- 01 DATA -->
+      <section class="section" id="data">
+        <div class="head"><div><p class="eyebrow">01 / DATA</p><h2>Two leagues, very different sizes</h2></div>
+          <p class="src">dataset_summary.csv</p></div>
+        <div class="stats">
+          <article><span>IPL matches (2008–2019)</span><strong>{{ leagueTotal('IPL', 'Matches') }}</strong>
+            <small>{{ leagueTotal('IPL', 'Second_innings_balls') | number }} second-innings balls · Kaggle dataset used by the paper</small></article>
+          <article><span>PSL matches (2016–2026)</span><strong>{{ leagueTotal('PSL', 'Matches') }}</strong>
+            <small>{{ leagueTotal('PSL', 'Second_innings_balls') | number }} second-innings balls · Cricsheet, converted to the same format</small></article>
+          <article><span>Target</span><strong>Chase win?</strong><small>predicted after every ball of the 2nd innings</small></article>
+          <article><span>Paper features</span><strong>30</strong><small>runs per batsman 1–11, bowler 1–10, score, target, wickets, balls</small></article>
+        </div>
+        <div class="two">
+          @for (lg of ['IPL', 'PSL']; track lg) {
+            <div class="panel">
+              <h3>{{ lg }} — matches per season</h3>
+              @for (r of seasonsOf(lg); track r['Season']) {
+                <div class="hbar">
+                  <span class="lbl">{{ r['Season'] }}</span>
+                  <span class="track"><i [style.width.%]="barPct(n(r, 'Matches'), maxSeasonMatches)" [class.alt]="lg === 'PSL'"></i></span>
+                  <span class="val">{{ r['Matches'] }} · chase {{ f(n(r, 'Chasing_win_rate'), 0) }}%</span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- 02 REPRODUCTION -->
+      <section class="section" id="reproduction">
+        <div class="head"><div><p class="eyebrow">02 / PAPER REPRODUCTION (IPL)</p><h2>Same data, same protocol, same models</h2></div>
+          <p class="src">e1_paper_reproduction_ipl.csv</p></div>
+        <p class="lead small">
+          Train on IPL 2008–2018, test on all 2019 matches (the test set has exactly 59 matches and
+          6,960 balls, as in the paper). Mean train score is KFold TimeSeriesSplit cross-validation over
+          matches in date order. The five tabs are the paper's Models 1–5.
+        </p>
+        @if (!e1.length) {
+          <div class="notice">Reproduction results are not available yet: run <code>python ml/run_experiments.py --exp e1</code>.</div>
+        } @else {
+          <div class="tabs">
+            @for (p of phases; track p) {
+              <button [class.on]="e1Phase === p" (click)="e1Phase = p">Overs {{ p }}</button>
+            }
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Model</th><th>Mean train score (CV)</th><th>Test accuracy</th><th>Paper test accuracy</th><th>Difference</th>
+                <th>Precision</th><th>Recall</th><th>F1</th><th>ROC-AUC</th></tr></thead>
+              <tbody>
+                @for (r of e1Rows(); track r['Model']) {
+                  <tr [class.dl]="r['Family'] === 'Deep learning'">
+                    <td class="name">{{ r['Model'] }}</td>
+                    <td>{{ f(n(r, 'CV_mean')) }}% (±{{ f(n(r, 'CV_std')) }})</td>
+                    <td><strong>{{ f(n(r, 'Accuracy')) }}%</strong></td>
+                    <td>{{ f(n(r, 'Paper_test_accuracy')) }}{{ r['Paper_test_accuracy'] ? '%' : '' }}</td>
+                    <td [class.up]="e1Diff(r) > 0" [class.down]="e1Diff(r) < 0">{{ f(e1Diff(r), 2, ' pp') }}</td>
+                    <td>{{ f(n(r, 'Precision')) }}</td><td>{{ f(n(r, 'Recall')) }}</td><td>{{ f(n(r, 'F1')) }}</td><td>{{ f(n(r, 'ROC_AUC')) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <p class="note">
+            Best classical: <b>{{ e1Best('Classical')?.['Model'] }}</b> ({{ f(n(e1Best('Classical'), 'Accuracy')) }}%) ·
+            best deep model: <b>{{ e1Best('Deep learning')?.['Model'] }}</b> ({{ f(n(e1Best('Deep learning'), 'Accuracy')) }}%).
+            Shaded rows are LSTM / GRU models. "—" means the paper did not report that model for this phase.
+          </p>
+        }
+      </section>
+
+      <!-- 03 FOUR MODELS -->
+      <section class="section" id="models">
+        <div class="head"><div><p class="eyebrow">03 / TWO PAPER MODELS + TWO NEW MODELS</p><h2>SVC, Random Forest, LightGBM and CatBoost</h2></div>
+          <p class="src">e2_four_models.csv</p></div>
+        <div class="tabs">
+          @for (l of ['PSL', 'IPL']; track l) {
+            <button [class.on]="e2League === l" (click)="setLeague(l)">{{ l }}</button>
+          }
+          <span class="sep"></span>
+          @for (s of splitsFor(e2League); track s) {
+            <button [class.on]="e2Split === s" (click)="e2Split = s">{{ s }}</button>
+          }
+        </div>
+        <div class="cards">
+          @for (r of e2Rows(); track r['Model']; let i = $index) {
+            <article class="card">
+              <p class="tag" [class.new]="r['Role'] === 'New model'">{{ r['Role'] }}</p>
+              <h3>{{ r['Model'] }}</h3>
+              @for (m of metrics; track m.key) {
+                <div class="metric">
+                  <span>{{ m.label }}</span><strong>{{ f(n(r, m.key)) }}%</strong>
+                  <span class="track"><i [style.width.%]="n(r, m.key)" [style.background]="color(i)"></i></span>
+                </div>
+              }
+              <p class="small muted">{{ r['Train_matches'] }} train / {{ r['Test_matches'] }} test matches</p>
+            </article>
+          }
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Accuracy by phase of the chase</th>
+              @for (p of phases.slice(1); track p) { <th>Overs {{ p }}</th> }</tr></thead>
+            <tbody>
+              @for (r of e2Rows(); track r['Model']) {
+                <tr><td class="name">{{ r['Model'] }}</td>
+                  @for (p of phases.slice(1); track p) { <td>{{ f(n(r, 'Acc_overs_' + p)) }}%</td> }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Season split = train on all earlier seasons, test on the latest season (as in the paper).
+          Random 80/20 = 80 % of matches for training and 20 % for testing; balls of one match are never split.</p>
+      </section>
+
+      <!-- 04 NOVELTY -->
+      <section class="section" id="novelty">
+        <div class="head"><div><p class="eyebrow">04 / NOVELTY · PROBLEM</p><h2>A small league cannot train a good win predictor on its own</h2></div></div>
+        <div class="problem">
+          <p>
+            The PSL has played <b>{{ leagueTotal('PSL', 'Matches') }}</b> decided matches since 2016, against
+            <b>{{ leagueTotal('IPL', 'Matches') }}</b> IPL matches in the paper's dataset alone. Trained on PSL data only,
+            the paper's method is less accurate and its probabilities are unreliable: for the boosting models
+            its Brier score is close to or worse than 0.25, the score of always predicting 50 %. The paper's raw features (runs of batsman 1–11 and
+            bowler 1–10) also never state what really decides a chase: how many runs are needed, how
+            fast, and with how many wickets and balls left.
+          </p>
+          <ol>
+            <li><b>Chase-state features (7):</b> runs needed, current and required run rate, their gap,
+              resources (wickets left × balls left) and momentum over the last 12 balls.</li>
+            <li><b>League-aware transfer:</b> train on IPL + earlier PSL seasons together, with a league flag.</li>
+            <li><b>Honest evaluation:</b> six PSL seasons (2021–2026), each predicted only from earlier seasons, with probability quality (Brier) reported as well as the five metrics.</li>
+          </ol>
+        </div>
+
+        <div class="head"><div><p class="eyebrow">05 / NOVELTY · RESULT</p><h2>Rolling evaluation on six PSL seasons</h2></div>
+          <p class="src">e3_novelty_psl_rolling.csv</p></div>
+        <div class="tabs">
+          @for (m of e3Models; track m) {
+            <button [class.on]="e3Model === m" (click)="e3Model = m">{{ m }}</button>
+          }
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Training setting · {{ e3Model }}</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>ROC-AUC</th><th>Brier ↓</th></tr></thead>
+            <tbody>
+              @for (s of e3Settings; track s) {
+                <tr [class.prop]="isProposed(s)" [class.base]="isBaseline(s)">
+                  <td class="name">{{ s }}</td>
+                  @for (k of ['Accuracy', 'Precision', 'Recall', 'F1', 'ROC_AUC']; track k) {
+                    <td>{{ f(e3Agg(s, k).m) }} <small>±{{ f(e3Agg(s, k).s, 1) }}</small></td>
+                  }
+                  <td>{{ f(e3Agg(s, 'Brier').m, 3) }} <small>±{{ f(e3Agg(s, 'Brier').s, 3) }}</small></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Mean ± standard deviation over the six test seasons. Brier score: lower is better; 0.25 = always predicting 50 %.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Accuracy per test season · {{ e3Model }}</th>
+              @for (y of e3Seasons; track y) { <th>{{ y }}</th> }</tr></thead>
+            <tbody>
+              @for (s of e3Settings; track s) {
+                <tr [class.prop]="isProposed(s)">
+                  <td class="name">{{ s }}</td>
+                  @for (y of e3Seasons; track y) {
+                    <td [style.background]="heat(e3Cell(s, y), 55, 85)">{{ f(e3Cell(s, y), 1) }}</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Proposed (S4) vs paper method (S1), all four models</th><th>Accuracy gain</th><th>ROC-AUC gain</th><th>F1 gain</th><th>Brier change</th><th>Seasons won</th></tr></thead>
+            <tbody>
+              @for (m of e3Models; track m) {
+                <tr><td class="name">{{ m }}</td>
+                  <td class="up">+{{ f(gain(m, 'Accuracy')) }} pp</td>
+                  <td class="up">+{{ f(gain(m, 'ROC_AUC')) }} pp</td>
+                  <td class="up">+{{ f(gain(m, 'F1')) }} pp</td>
+                  <td [class.up]="gain(m, 'Brier') < 0">{{ f(gain(m, 'Brier'), 3) }}</td>
+                  <td>{{ winsOf(m) }}</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (e3ipl.length) {
+          <div class="head"><div><p class="eyebrow">06 / SUPPORTING CHECK</p><h2>Chase-state features on the paper's own IPL 2019 test</h2></div>
+            <p class="src">e3_novelty_ipl2019_features.csv</p></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Feature set</th><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>ROC-AUC</th><th>Brier</th></tr></thead>
+              <tbody>
+                @for (r of e3iplRows(); track r['Feature_set'] + r['Model']) {
+                  <tr><td class="name">{{ r['Feature_set'] }}</td><td>{{ r['Model'] }}</td>
+                    <td>{{ f(n(r, 'Accuracy')) }}</td><td>{{ f(n(r, 'Precision')) }}</td><td>{{ f(n(r, 'Recall')) }}</td>
+                    <td>{{ f(n(r, 'F1')) }}</td><td>{{ f(n(r, 'ROC_AUC')) }}</td><td>{{ f(n(r, 'Brier'), 3) }}</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+    }
+  </main>
+
+  <footer>
+    <span>Sundas Maria Hayat · Research dashboard</span>
+    <span>Data: Kaggle IPL 2008–2019 (Goel et al. 2021) · Cricsheet PSL (ODC-By)</span>
+  </footer>
+</div>
